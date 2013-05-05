@@ -73,7 +73,7 @@ module Codec.Picture.Types( -- * Types
                           ) where
 
 import Control.Monad( forM_, foldM )
-import Control.Applicative( (<$>), (<*>) )
+import Control.Applicative( Applicative, (<$>), (<*>) )
 import Control.DeepSeq( NFData( .. ) )
 import Control.Monad.ST( ST, runST )
 import Control.Monad.Primitive ( PrimMonad, PrimState )
@@ -235,19 +235,19 @@ data MutableImage s a = MutableImage
 
       -- | The real image, to extract pixels at some position
       -- you should use the helpers functions.
-    , mutableImageData   :: M.STVector s (PixelBaseComponent a)
+    , mutableImageData   :: M.MVector s (PixelBaseComponent a)
     }
 
 -- | `O(n)` Yield an immutable copy of an image by making a copy of it
-freezeImage :: (Storable (PixelBaseComponent a))
-            => MutableImage s a -> ST s (Image a)
-freezeImage (MutableImage w h d) = Image w h <$> V.freeze d
+freezeImage :: (PrimMonad m, Storable (PixelBaseComponent a))
+            => MutableImage (PrimState m) a -> m (Image a)
+freezeImage (MutableImage w h d) = V.freeze d >>= return . Image w h
 
 -- | `O(1)` Unsafe convert a mutable image to an immutable one without copying.
 -- The mutable image may not be used after this operation.
-unsafeFreezeImage ::  (Storable (PixelBaseComponent a))
-                  => MutableImage s a -> ST s (Image a)
-unsafeFreezeImage (MutableImage w h d) = Image w h <$> V.unsafeFreeze d
+unsafeFreezeImage ::  (PrimMonad m, Storable (PixelBaseComponent a))
+                  => MutableImage (PrimState m) a -> m (Image a)
+unsafeFreezeImage (MutableImage w h d) = V.unsafeFreeze d >>= return . Image w h
 
 instance NFData (MutableImage s a) where
     rnf (MutableImage width height dat) = width  `seq`
@@ -504,7 +504,7 @@ class ( Storable (PixelBaseComponent a)
             (x + y * w) * componentCount (undefined :: a)
 
     -- | Calculate theindex for the begining of the pixel at position x y
-    mutablePixelBaseIndex :: MutableImage s a -> Int -> Int -> Int
+    mutablePixelBaseIndex :: MutableImage m a -> Int -> Int -> Int
     mutablePixelBaseIndex (MutableImage { mutableImageWidth = w }) x y =
             (x + y * w) * componentCount (undefined :: a)
 
@@ -517,7 +517,8 @@ class ( Storable (PixelBaseComponent a)
     readPixel :: MutableImage s a -> Int -> Int -> ST s a
 
     -- | Write a pixel in a mutable image at position x y
-    writePixel :: MutableImage s a -> Int -> Int -> a -> ST s ()
+    writePixel :: (Applicative m, PrimMonad m)
+               => MutableImage (PrimState m) a -> Int -> Int -> a -> m ()
 
     -- | Unsafe version of pixelAt, read a pixel at the given
     -- index without bound checking (if possible).
@@ -527,12 +528,14 @@ class ( Storable (PixelBaseComponent a)
     -- | Unsafe version of readPixel,  read a pixel at the given
     -- position without bound checking (if possible). The index
     -- is expressed in number (PixelBaseComponent a)
-    unsafeReadPixel :: M.STVector s (PixelBaseComponent a) -> Int -> ST s a
+    unsafeReadPixel :: (Applicative m, PrimMonad m)
+                    => M.MVector (PrimState m) (PixelBaseComponent a) -> Int -> m a
 
     -- | Unsafe version of writePixel, write a pixel at the
     -- given position without bound checking. This can be _really_ unsafe.
     -- The index is expressed in number (PixelBaseComponent a)
-    unsafeWritePixel :: M.STVector s (PixelBaseComponent a) -> Int -> a -> ST s ()
+    unsafeWritePixel :: (Applicative m, PrimMonad m)
+                     => M.MVector (PrimState m) (PixelBaseComponent a) -> Int -> a -> m ()
 
 
 -- | Implement upcasting for pixel types

@@ -88,6 +88,7 @@ module Codec.Picture (
                      ) where
 
 import Control.Applicative( (<$>) )
+import Control.Monad.Primitive( PrimMonad, PrimState )
 import Control.DeepSeq( NFData, deepseq )
 import qualified Control.Exception as Exc ( catch, IOException )
 import Codec.Picture.Bitmap( BmpEncodable, decodeBitmap
